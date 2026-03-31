@@ -10,6 +10,8 @@ def _make_cli(model: str = "anthropic/claude-sonnet-4-20250514"):
     cli_obj.session_start = datetime.now() - timedelta(minutes=14, seconds=32)
     cli_obj.conversation_history = [{"role": "user", "content": "hi"}]
     cli_obj.agent = None
+    cli_obj._agent_running = False
+    cli_obj._status_spinner_idx = 0
     return cli_obj
 
 
@@ -59,14 +61,47 @@ class TestCLIStatusBar:
         assert cli_obj._status_bar_context_style(81) == "class:status-bar-bad"
         assert cli_obj._status_bar_context_style(95) == "class:status-bar-critical"
 
+    def test_status_bar_spinner_idle_returns_caduceus(self):
+        """_status_bar_spinner_char() returns ⚕ when agent is not running."""
+        cli_obj = _make_cli()
+        cli_obj._agent_running = False
+
+        # Should return ⚕ every time, never advance index
+        for _ in range(5):
+            assert cli_obj._status_bar_spinner_char() == "⚕"
+        assert cli_obj._status_spinner_idx == 0  # index should not advance
+
+    def test_status_bar_spinner_cycles_when_running(self):
+        """_status_bar_spinner_char() cycles through Braille dots while running."""
+        cli_obj = _make_cli()
+        cli_obj._agent_running = True
+
+        frames = [cli_obj._status_bar_spinner_char() for _ in range(30)]
+        # Should repeat every 10 frames
+        assert frames[0:10] == frames[10:20] == frames[20:30]
+        # Should never return ⚕ while running
+        assert "⚕" not in frames
+
+    def test_status_bar_spinner_returns_caduceus_after_stop(self):
+        """Switching _agent_running to False immediately returns ⚕."""
+        cli_obj = _make_cli()
+        cli_obj._agent_running = True
+        # Advance the spinner
+        for _ in range(7):
+            cli_obj._status_bar_spinner_char()
+
+        # Stop the agent
+        cli_obj._agent_running = False
+        assert cli_obj._status_bar_spinner_char() == "⚕"
+
     def test_build_status_bar_text_for_wide_terminal(self):
         cli_obj = _attach_agent(
             _make_cli(),
-            prompt_tokens=10_230,
-            completion_tokens=2_220,
-            total_tokens=12_450,
+            prompt_tokens=12_400,
+            completion_tokens=4_200,
+            total_tokens=16_600,
             api_calls=7,
-            context_tokens=12_450,
+            context_tokens=12_400,
             context_length=200_000,
         )
 

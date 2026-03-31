@@ -1254,6 +1254,7 @@ class HermesCLI:
         self._secret_state = None
         self._secret_deadline = 0
         self._spinner_text: str = ""  # thinking spinner text for TUI
+        self._status_spinner_idx: int = 0  # Braille frame counter for status bar spinner
         self._command_running = False
         self._command_status = ""
         self._attached_images: list[Path] = []
@@ -1286,6 +1287,14 @@ class HermesCLI:
         if hasattr(self, "_app") and self._app and (now - self._last_invalidate) >= min_interval:
             self._last_invalidate = now
             self._app.invalidate()
+
+    def _status_bar_spinner_char(self) -> str:
+        """Return a Braille spinner frame while the agent is running, ⚕ when idle."""
+        if not self._agent_running:
+            return "⚕"
+        idx = self._status_spinner_idx % len(_COMMAND_SPINNER_FRAMES)
+        self._status_spinner_idx += 1
+        return _COMMAND_SPINNER_FRAMES[idx]
 
     def _status_bar_context_style(self, percent_used: Optional[int]) -> str:
         if percent_used is None:
@@ -1400,6 +1409,7 @@ class HermesCLI:
 
     def _build_status_bar_text(self, width: Optional[int] = None) -> str:
         try:
+            spinner = self._status_bar_spinner_char()
             snapshot = self._get_status_bar_snapshot()
             if width is None:
                 try:
@@ -1412,10 +1422,10 @@ class HermesCLI:
             duration_label = snapshot["duration"]
 
             if width < 52:
-                text = f"⚕ {snapshot['model_short']} · {duration_label}"
+                text = f"{spinner} {snapshot['model_short']} · {duration_label}"
                 return self._trim_status_bar_text(text, width)
             if width < 76:
-                parts = [f"⚕ {snapshot['model_short']}", percent_label]
+                parts = [f"{spinner} {snapshot['model_short']}", percent_label]
                 parts.append(duration_label)
                 return self._trim_status_bar_text(" · ".join(parts), width)
 
@@ -1426,17 +1436,19 @@ class HermesCLI:
             else:
                 context_label = "ctx --"
 
-            parts = [f"⚕ {snapshot['model_short']}", context_label, percent_label]
+            parts = [f"{spinner} {snapshot['model_short']}", context_label, percent_label]
             parts.append(duration_label)
             return self._trim_status_bar_text(" │ ".join(parts), width)
         except Exception:
-            return f"⚕ {self.model if getattr(self, 'model', None) else 'Hermes'}"
+            spinner = self._status_bar_spinner_char()
+            return f"{spinner} {self.model if getattr(self, 'model', None) else 'Hermes'}"
 
     def _get_status_bar_fragments(self):
         if not self._status_bar_visible:
             return []
         try:
             snapshot = self._get_status_bar_snapshot()
+            spinner = f" {self._status_bar_spinner_char()} "
             # Use prompt_toolkit's own terminal width when running inside the
             # TUI — shutil.get_terminal_size() can return stale or fallback
             # values (especially on SSH) that differ from what prompt_toolkit
@@ -1451,7 +1463,7 @@ class HermesCLI:
 
             if width < 52:
                 frags = [
-                    ("class:status-bar", " ⚕ "),
+                    ("class:status-bar", spinner),
                     ("class:status-bar-strong", snapshot["model_short"]),
                     ("class:status-bar-dim", " · "),
                     ("class:status-bar-dim", duration_label),
@@ -1462,7 +1474,7 @@ class HermesCLI:
                 percent_label = f"{percent}%" if percent is not None else "--"
                 if width < 76:
                     frags = [
-                        ("class:status-bar", " ⚕ "),
+                        ("class:status-bar", spinner),
                         ("class:status-bar-strong", snapshot["model_short"]),
                         ("class:status-bar-dim", " · "),
                         (self._status_bar_context_style(percent), percent_label),
@@ -1480,7 +1492,7 @@ class HermesCLI:
 
                     bar_style = self._status_bar_context_style(percent)
                     frags = [
-                        ("class:status-bar", " ⚕ "),
+                        ("class:status-bar", spinner),
                         ("class:status-bar-strong", snapshot["model_short"]),
                         ("class:status-bar-dim", " │ "),
                         ("class:status-bar-dim", context_label),
